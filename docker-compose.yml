@@ -1,0 +1,127 @@
+version: '3.2'
+
+services:
+
+ jenkins:
+    restart: always
+    container_name: jenkins
+    build:
+      context: ./setup/jenkins-server/master
+    ports:
+      - 8080:8080
+      - 50000:50000
+      - 4444:4444
+    environment:
+      - TZ=Europe/Minsk
+      - ENV JAVA_ARGS="\"-Dhudson.model.DirectoryBrowserSupport.CSP=default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';\""
+    volumes:
+      - yacienv:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - jennetwork
+
+ jenkinsagent:
+    restart: always
+    build:
+      context: ./setup/jenkins-server/agent
+    environment:
+      - JENKINS_USER=user
+      - JENKINS_PASS=pass
+      - JENKINS_MASTER=jenkins
+    networks:
+      - jennetwork
+
+ grchrome:
+    image: selenium/node-chrome
+    depends_on:
+      - jenkins
+    environment:
+      - HUB_PORT_4444_TCP_ADDR=jenkins
+      - HUB_PORT_4444_TCP_PORT=4444
+      - NODE_MAX_INSTANCES=5
+      - NODE_MAX_SESSION=5
+      - SCREEN_WIDTH=1920
+      - SCREEN_HEIGHT=1080
+    expose:
+      - 5555
+    networks:
+      - jennetwork
+
+ grfirefox:
+    image: selenium/node-firefox
+    depends_on:
+      - jenkins
+    environment:
+      - HUB_PORT_4444_TCP_ADDR=jenkins
+      - HUB_PORT_4444_TCP_PORT=4444
+      - NODE_MAX_INSTANCES=3
+      - NODE_MAX_SESSION=3
+    expose:
+      - 5555
+    networks:
+      - jennetwork
+
+ nexus:
+    restart: always
+    container_name: nexus
+    image: sonatype/nexus3
+    ports:
+#      - 443:8443
+      - 8081:8081
+      - 8082:8082
+      - 8083:8083
+    environment:
+      - JAVA_MIN_MEM=300m
+      - JAVA_MAX_MEM=1000m
+    volumes:
+      - yacienv:/nexus-data
+    networks:
+      - jennetwork
+    
+ sonarbase:
+    restart: always
+    container_name: sonar-base
+    image: orchardup/postgresql
+    environment:
+      - POSTGRESQL_USER=sonar
+      - POSTGRESQL_PASS=sonar
+      - POSTGRESQL_DB=sonar
+    expose:
+      - 5432
+    volumes:
+      - yacienv:/var/lib/postgresql
+    networks:
+      - jennetwork
+
+ sonar:
+    restart: always
+    container_name: sonar
+    image: sonarqube
+    depends_on:
+      - sonarbase
+    ports:
+      - 9000:9000
+    environment:
+      - SONARQUBE_JDBC_URL=jdbc:postgresql://sonarbase:5432/sonar
+    networks:
+      - jennetwork
+
+ portainer:
+    restart: always
+    container_name: portainer
+    image: portainer/portainer
+    ports:
+      - 9001:9000
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - jennetwork
+
+
+networks:
+    jennetwork:
+     driver: bridge
+
+
+volumes:
+    yacienv:
